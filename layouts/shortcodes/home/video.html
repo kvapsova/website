@@ -1,15 +1,50 @@
 {{/*
   home/video: the introductory talk, at the end of the community section.
 
-  Shows the poster from the Figma frame (black, play icon, "YouTube"). The player is only
-  created on click, so the page makes no request to YouTube until the visitor asks for the
-  video. Without JavaScript the poster is a plain link to the video.
+  The poster shows the video's own YouTube thumbnail. It is fetched once, at build time,
+  and served from this site as a webp, so a visitor's browser makes no request to YouTube
+  or Google until they press play. The player (youtube-nocookie) is created on click.
+
+  Thumbnail lookup, best first: maxresdefault, sddefault, hqdefault. If none can be fetched
+  (offline build, video removed) the build only warns and the poster stays black with the
+  play icon, as in the Figma frame. Without JavaScript the poster is a plain link to the video.
+
+  Parameters:
+    id      YouTube video id
+    title   accessible title
+    poster  optional: path of an image under assets/ to use instead of fetching one
+  Site param video_thumbnail_base (default https://i.ytimg.com/vi) can point at a mirror.
 */ -}}
 {{- $id := .Get "id" | default "UBppH7GqQTA" -}}
 {{- $title := .Get "title" | default "Cozystack 5 min Lightning Talk" -}}
+{{- $base := site.Params.video_thumbnail_base | default "https://i.ytimg.com/vi" -}}
+
+{{- $thumb := "" -}}
+{{- with .Get "poster" }}
+  {{- with resources.Get . }}{{ $thumb = . }}{{ else }}{{ warnf "home/video: poster %q not found under assets/" . }}{{ end }}
+{{- end }}
+{{- if not $thumb }}
+  {{- range slice "maxresdefault" "sddefault" "hqdefault" }}
+    {{- if not $thumb }}
+      {{- $url := printf "%s/%s/%s.jpg" $base $id . }}
+      {{- with try (resources.GetRemote $url) }}
+        {{- if not .Err }}
+          {{- with .Value }}{{ if eq .MediaType.MainType "image" }}{{ $thumb = . }}{{ end }}{{ end }}
+        {{- end }}
+      {{- end }}
+    {{- end }}
+  {{- end }}
+  {{- if not $thumb }}{{ warnf "home/video: no thumbnail could be fetched for %q, showing the plain poster" $id }}{{ end }}
+{{- end }}
+{{- $img := "" -}}
+{{- with $thumb }}{{ $img = .Process "webp q80" }}{{ end }}
+
 <div class="cz-video" data-video-id="{{ $id }}" data-video-title="{{ $title }}">
   <div class="ratio ratio-16x9">
-    <a class="cz-video__poster" href="https://www.youtube.com/watch?v={{ $id }}" target="_blank" rel="noopener noreferrer" aria-label="Play video: {{ $title }}">
+    <a class="cz-video__poster{{ if $img }} has-thumb{{ end }}" href="https://www.youtube.com/watch?v={{ $id }}" target="_blank" rel="noopener noreferrer" aria-label="Play video: {{ $title }}">
+      {{- with $img }}
+      <img class="cz-video__thumb" src="{{ .RelPermalink }}" width="{{ .Width }}" height="{{ .Height }}" alt="" loading="lazy" decoding="async">
+      {{- end }}
       <span class="cz-video__play">{{ with resources.Get "icons/ui/play.svg" }}{{ .Content | safeHTML }}{{ end }}</span>
       <span class="cz-video__label">YouTube</span>
     </a>
